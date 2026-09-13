@@ -1,0 +1,19 @@
+{
+  "name": "Stow Shift Card",
+  "short_name": "Stow",
+  "description": "Offline tote and pace tracker for a 10-hour stow shift.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#E9E3D5",
+  "theme_color": "#E9E3D5",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
