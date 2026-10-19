@@ -1,5 +1,5 @@
-// v22 — network-first for the page so deploys actually reach the device
-const CACHE = "stow-v22";
+// v25 — network-first for the page so deploys actually reach the device
+const CACHE = "stow-v25";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", e => {
@@ -19,9 +19,10 @@ self.addEventListener("fetch", e => {
   const isPage = e.request.mode === "navigate" || e.request.destination === "document";
 
   if (isPage) {
-    // try the network first, fall back to cache when offline
+    // cache:"no-store" bypasses GitHub Pages' own HTTP cache headers too —
+    // "network first" alone still let a stale HTTP-cached response through.
     e.respondWith(
-      fetch(e.request)
+      fetch(e.request, { cache: "no-store" })
         .then(res => {
           const copy = res.clone();
           caches.open(CACHE).then(c => c.put("./index.html", copy));
@@ -35,7 +36,7 @@ self.addEventListener("fetch", e => {
   // everything else: cache first, refresh in background
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then(hit => {
-      const net = fetch(e.request).then(res => {
+      const net = fetch(e.request, { cache: "no-store" }).then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy));
         return res;

@@ -81,6 +81,21 @@
   @keyframes pulse{0%,100%{box-shadow:4px 4px 0 var(--ink)}50%{box-shadow:4px 4px 0 var(--signal)}}
   @media (prefers-reduced-motion:reduce){.goal.urgent{animation:none}}
 
+  .ladder{margin-top:8px;border:1.5px solid var(--ink);background:var(--paper)}
+  .ladder .lhead{display:flex;justify-content:space-between;align-items:baseline;padding:6px 10px 5px;
+    border-bottom:1px solid var(--rule);font-family:var(--fm);font-size:9px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--slate)}
+  .ladder .lrow{display:grid;grid-template-columns:1.1fr 1fr 1fr;align-items:baseline;padding:5px 10px;
+    border-bottom:1px solid var(--rule);font-variant-numeric:tabular-nums}
+  .ladder .lrow:last-child{border-bottom:0}
+  .ladder .lrate{font-family:var(--fd);font-weight:700;font-size:20px}
+  .ladder .lrate small{font-family:var(--fm);font-size:9px;font-weight:400;color:var(--slate);letter-spacing:.08em}
+  .ladder .lhr{font-family:var(--fm);font-size:12px;text-align:right}
+  .ladder .lq{font-family:var(--fd);font-weight:700;font-size:20px;text-align:right}
+  .ladder .lq small{font-family:var(--fm);font-size:9px;font-weight:400;color:var(--slate)}
+  .ladder .lrow.hit{background:var(--paper-3)}
+  .ladder .lrow.hit .lq{color:var(--ahead)}
+  .ladder .lnote{padding:6px 10px;font-family:var(--fm);font-size:10px;color:var(--slate);text-align:center}
   #block{text-align:center;margin-top:8px;padding:6px 0;border:1.5px solid var(--ink);
     font-family:var(--fd);font-weight:700;font-size:18px;letter-spacing:.02em;background:var(--paper-3)}
   #block.up{border-color:var(--ahead);color:var(--ahead)}
@@ -240,6 +255,7 @@
       </div>
     </div>
     <div id="block">—</div>
+    <div class="ladder" id="ladder"></div>
   </div>
 
   <div class="pad" id="pad"></div>
@@ -297,7 +313,7 @@
       <button id="logBtn">Log</button>
       <button id="settings">Setup</button>
     </div>
-    <div id="status">v22 · offline · stored on this phone only</div>
+    <div id="status">v25 · offline · stored on this phone only</div>
   </div>
 </div>
 
@@ -566,6 +582,33 @@ function renderInner(){
   $("rNow").textContent = nowUph===null ? "—" : nowUph;
   $("rCad").textContent = Math.round(blockTarget);
   $("rNow").style.color = nowUph===null ? "" : (nowUph>=S.target ? "var(--ahead)" : "var(--signal)");
+
+  // ---- next-hour ladder: 5 overall rates and what the next hour (and each 15) needs ----
+  {
+    const L=$("ladder");
+    const hrsNow=worked(t)/60;
+    const leftMin=totalWorked()-worked(t);
+    const win=Math.min(60, leftMin);              // next hour, or whatever is left of the shift
+    if(!inShift || hrsNow<0.25 || win<15){
+      L.innerHTML=`<div class="lnote">${!inShift?"next-hour targets show during your shift":"next-hour targets appear after 15 min of work"}</div>`;
+    } else {
+      const base=Math.round(all.units/hrsNow);
+      const winH=win/60, blocks=win/15;
+      let rows="";
+      for(let i=1;i<=5;i++){
+        const T=base+10*i;
+        const need=Math.max(0, Math.ceil(T*(hrsNow+winH) - all.units));
+        const per15=Math.ceil(need/blocks);
+        const nowPer15=Math.round(nowUph/4);
+        rows+=`<div class="lrow${nowUph!==null && nowPer15>=per15?" hit":""}">
+          <div class="lrate">${T}<small> UPH</small></div>
+          <div class="lhr">${need} in ${Math.round(win)}m</div>
+          <div class="lq">${per15}<small>/15</small></div></div>`;
+      }
+      L.innerHTML=`<div class="lhead"><span>now ${base} uph</span><span>stow this → reach</span></div>`+rows;
+    }
+  }
+
 
 
   const hrsLeft = (totalWorked()-worked(t))/60;
@@ -855,11 +898,12 @@ $("restoreBtn").onclick=()=>{
 
 /* ---------- storage ---------- */
 function queueSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveShift,300); }
+const HOSTTAG = location.host + location.pathname;   // shows which address this instance is actually saving to
 function saveShift(){
   const ok=DB.set("stow:"+dayKey, JSON.stringify({events, box:boxNum, ctype}));
   $("status").textContent = ok
-    ? "v22 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
-    : "storage full — export your log";
+    ? HOSTTAG+" · v25 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+    : HOSTTAG+" · storage full — export your log";
 }
 function boot(){
   dayKey=todayKey();
@@ -875,6 +919,7 @@ function boot(){
   if(!Array.isArray(S.keys) || !S.keys.length) S.keys=[2,4,6,8,10,12,14,16,18,20];
   buildPad();           // migrate old totes-per-quarter setting
   setType(ctype);       // paint the icon/label to match whatever was loaded (or the default)
+  $("status").textContent = HOSTTAG + " · v25 · loaded, no taps yet";
   lastQ=quarterAt(nowMin());
   render();
   setInterval(()=>{
