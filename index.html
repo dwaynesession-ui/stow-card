@@ -97,6 +97,14 @@
   .ladder .lq small{font-family:var(--fm);font-size:9px;font-weight:400;color:var(--slate)}
   .ladder .lrow.hit{background:var(--paper-3)}
   .ladder .lrow.hit .lq{color:var(--ahead)}
+  .ladder .lrow{position:relative}
+  .ladder .lbar{position:absolute;left:0;right:0;bottom:0;height:3px;background:transparent}
+  .ladder .lbar i{display:block;height:100%;background:var(--slate);opacity:.45}
+  .ladder .lrow.pace .lbar i{background:var(--hivis);opacity:1}
+  .ladder .lrow.pace .lq{color:var(--ink)}
+  .ladder .lrow.hit .lbar i{background:var(--ahead);opacity:1}
+  .ladder .lblk{text-transform:none;letter-spacing:.04em;color:var(--ink)}
+  .ladder .lblk b{font-family:var(--fd);font-size:13px}
   .ladder .lnote{padding:6px 10px;font-family:var(--fm);font-size:10px;color:var(--slate);text-align:center}
   #block{text-align:center;margin-top:8px;padding:6px 0;border:1.5px solid var(--ink);
     font-family:var(--fd);font-weight:700;font-size:18px;letter-spacing:.02em;background:var(--paper-3)}
@@ -315,7 +323,7 @@
       <button id="logBtn">Log</button>
       <button id="settings">Setup</button>
     </div>
-    <div id="status">v26 · offline · stored on this phone only</div>
+    <div id="status">v27 · offline · stored on this phone only</div>
   </div>
 </div>
 
@@ -596,18 +604,24 @@ function renderInner(){
     } else {
       const base=Math.round(all.units/hrsNow);
       const winH=win/60, blocks=win/15;
+      const inBlock=Math.max(0.5, wNow-bStart);            // minutes into the current 15
+      const blockUph=Math.round(bUnits/(inBlock/60));       // this block's pace as an hourly rate
       let rows="";
       for(let i=1;i<=5;i++){
         const T=base+10*i;
         const need=Math.max(0, Math.ceil(T*(hrsNow+winH) - all.units));
-        const per15=Math.ceil(need/blocks);
-        const nowPer15=Math.round(nowUph/4);
-        rows+=`<div class="lrow${nowUph!==null && nowPer15>=per15?" hit":""}">
+        const per15=Math.max(1, Math.ceil(need/blocks));
+        const done=bUnits>=per15;
+        const onPace=bUnits>=per15*(inBlock/15);           // where you should be this far into the block
+        const pct=Math.min(100, Math.round(bUnits/per15*100));
+        rows+=`<div class="lrow${done?" hit":onPace?" pace":""}">
           <div class="lrate">${T}<small> UPH</small></div>
           <div class="lhr">${need} in ${Math.round(win)}m</div>
-          <div class="lq">${per15}<small>/15</small></div></div>`;
+          <div class="lq">${bUnits}<small>/${per15}</small></div>
+          <div class="lbar"><i style="width:${pct}%"></i></div></div>`;
       }
-      L.innerHTML=`<div class="lhead"><span>now ${base} uph</span><span>stow this → reach</span></div>`+rows;
+      L.innerHTML=`<div class="lhead"><span>now ${base} uph</span>`+
+        `<span class="lblk">this 15: <b>${bUnits}</b> in ${Math.floor(inBlock)}m · <b>${bUnits?blockUph:0}</b> uph pace</span></div>`+rows;
     }
   }
 
@@ -904,7 +918,7 @@ const HOSTTAG = location.host + location.pathname;   // shows which address this
 function saveShift(){
   const ok=DB.set("stow:"+dayKey, JSON.stringify({events, box:boxNum, ctype}));
   $("status").textContent = ok
-    ? HOSTTAG+" · v26 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+    ? HOSTTAG+" · v27 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
     : HOSTTAG+" · storage full — export your log";
 }
 function boot(){
@@ -921,7 +935,7 @@ function boot(){
   if(!Array.isArray(S.keys) || !S.keys.length) S.keys=[2,4,6,8,10,12,14,16,18,20];
   buildPad();           // migrate old totes-per-quarter setting
   setType(ctype);       // paint the icon/label to match whatever was loaded (or the default)
-  $("status").textContent = HOSTTAG + " · v26 · loaded, no taps yet";
+  $("status").textContent = HOSTTAG + " · v27 · loaded, no taps yet";
   lastQ=quarterAt(nowMin());
   render();
   setInterval(()=>{
