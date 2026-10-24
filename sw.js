@@ -1,5 +1,5 @@
-// v27 — network-first for the page so deploys actually reach the device
-const CACHE = "stow-v27";
+// v28 — network-first for the page so deploys actually reach the device
+const CACHE = "stow-v28";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", e => {

@@ -106,6 +106,11 @@
   .ladder .lblk{text-transform:none;letter-spacing:.04em;color:var(--ink)}
   .ladder .lblk b{font-family:var(--fd);font-size:13px}
   .ladder .lnote{padding:6px 10px;font-family:var(--fm);font-size:10px;color:var(--slate);text-align:center}
+  .bclock{display:flex;align-items:baseline;justify-content:center;gap:10px;margin-top:8px}
+  .bclock .bcl{font-family:var(--fm);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--slate)}
+  #bcTime{font-family:var(--fm);font-weight:600;font-size:34px;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+  .bclock.late #bcTime{color:var(--signal)}
+  .bclock.idle #bcTime{color:var(--slate)}
   #block{text-align:center;margin-top:8px;padding:6px 0;border:1.5px solid var(--ink);
     font-family:var(--fd);font-weight:700;font-size:18px;letter-spacing:.02em;background:var(--paper-3)}
   #block.up{border-color:var(--ahead);color:var(--ahead)}
@@ -265,6 +270,7 @@
         <div class="goalsub" id="goalSub">to finish the shift at 120</div>
       </div>
     </div>
+    <div class="bclock" id="bclock"><span class="bcl">this 15</span><span id="bcTime">--:--</span><span class="bcl" id="bcSub">left</span></div>
     <div id="block">—</div>
     <div class="ladder" id="ladder"></div>
   </div>
@@ -323,7 +329,7 @@
       <button id="logBtn">Log</button>
       <button id="settings">Setup</button>
     </div>
-    <div id="status">v27 · offline · stored on this phone only</div>
+    <div id="status">v28 · offline · stored on this phone only</div>
   </div>
 </div>
 
@@ -918,9 +924,32 @@ const HOSTTAG = location.host + location.pathname;   // shows which address this
 function saveShift(){
   const ok=DB.set("stow:"+dayKey, JSON.stringify({events, box:boxNum, ctype}));
   $("status").textContent = ok
-    ? HOSTTAG+" · v27 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+    ? HOSTTAG+" · v28 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
     : HOSTTAG+" · storage full — export your log";
 }
+/* ---------- 15-minute countdown, ticks every second ---------- */
+let lastBlockIdx=null;
+function tickClock(){
+  const box=$("bclock"); if(!box) return;
+  const t=nowMin(), inShift=t>=mins(S.start)&&t<mins(S.end);
+  const onLunch=t>=mins(S.lunchA)&&t<mins(S.lunchB);
+  if(!inShift || !(totalWorked()>0)){
+    box.className="bclock idle"; $("bcTime").textContent="--:--"; $("bcSub").textContent=t<mins(S.start)?"before shift":"shift over";
+    lastBlockIdx=null; return;
+  }
+  const w=worked(t), idx=Math.floor(w/BLOCK);
+  const end=Math.min((idx+1)*BLOCK, totalWorked());
+  const secs=Math.max(0, Math.round((end-w)*60));
+  $("bcTime").textContent=String(Math.floor(secs/60)).padStart(2,"0")+":"+String(secs%60).padStart(2,"0");
+  $("bcSub").textContent=onLunch?"paused · lunch":"left";
+  box.className="bclock"+(onLunch?" idle":secs<=60?" late":"");
+  if(lastBlockIdx!==null && idx!==lastBlockIdx && !onLunch){
+    if(navigator.vibrate) navigator.vibrate([40,60,40]);
+    render();                         // roll the block bar and ladder over immediately
+  }
+  lastBlockIdx=idx;
+}
+
 function boot(){
   dayKey=todayKey();
   const s=DB.get("stow-settings"); if(s) try{ Object.assign(S,JSON.parse(s)); }catch(e){}
@@ -935,13 +964,15 @@ function boot(){
   if(!Array.isArray(S.keys) || !S.keys.length) S.keys=[2,4,6,8,10,12,14,16,18,20];
   buildPad();           // migrate old totes-per-quarter setting
   setType(ctype);       // paint the icon/label to match whatever was loaded (or the default)
-  $("status").textContent = HOSTTAG + " · v27 · loaded, no taps yet";
+  $("status").textContent = HOSTTAG + " · v28 · loaded, no taps yet";
   lastQ=quarterAt(nowMin());
   render();
   setInterval(()=>{
     if(todayKey()!==dayKey){ dayKey=todayKey(); events=[]; boxNum=1; ctype="box"; setType(ctype); barCache=-1; lastQ=quarterAt(nowMin()); }
     render();
   },5000);
+  tickClock();
+  setInterval(tickClock,1000);
   if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 }
 boot();
