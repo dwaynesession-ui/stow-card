@@ -124,8 +124,15 @@
   .jump{margin-top:8px;border:1.5px solid var(--ink);background:var(--paper)}
   .jump .jhead{padding:6px 10px 5px;border-bottom:1px solid var(--rule);font-family:var(--fm);font-size:9px;
     letter-spacing:.12em;text-transform:uppercase;color:var(--slate);display:flex;justify-content:space-between}
-  .jump .jrow{display:grid;grid-template-columns:repeat(5,1fr)}
-  .jump .jc{text-align:center;padding:6px 2px 7px;border-right:1px solid var(--rule)}
+  .jump .jrow{display:flex}
+  .jump .jc{flex:1 1 0;position:relative;overflow:hidden;text-align:center;padding:6px 2px 7px;border-right:1px solid var(--rule)}
+  .jump .jc > *{position:relative}
+  .jump .jfill{position:absolute;left:0;right:0;bottom:0;background:var(--hivis);transition:height .4s ease}
+  .jump .jc.got{background:var(--ahead);color:var(--paper);animation:jgot 1.6s ease forwards}
+  .jump .jc.got .ju small,.jump .jc.got .jr,.jump .jc.got .jr b{color:var(--paper)}
+  @keyframes jgot{0%,60%{opacity:1}100%{opacity:.15}}
+  @media (prefers-reduced-motion:reduce){.jump .jfill{transition:none}.jump .jc.got{animation:none}}
+  .jump .jset{font-family:var(--fm);font-size:9px;color:var(--slate)}
   .jump .jc:last-child{border-right:0}
   .jump .ju{font-family:var(--fd);font-weight:700;font-size:22px;line-height:1;font-variant-numeric:tabular-nums}
   .jump .ju small{font-size:13px;color:var(--slate)}
@@ -358,7 +365,7 @@
       <button id="logBtn">Log</button>
       <button id="settings">Setup</button>
     </div>
-    <div id="status">v30 · offline · stored on this phone only</div>
+    <div id="status">v31 · offline · stored on this phone only</div>
   </div>
 </div>
 
@@ -423,6 +430,7 @@ const DB = {
 const S = { start:"07:00", end:"17:30", lunchA:"11:30", lunchB:"12:00", target:120,
             keys:[2,4,6,8,10,12,14,16,18,20] };
 let lastUnits = null;
+let jumpSet = null;    // {targets:[T..], hit:{T:time}, startHrs, startUnits} — a fixed set of 5 goals
 let hourLock = null;   // {T, need, win, startW, startUnits, at} — a chosen next-hour goal
 let hourDoneBuzzed = false;
 let boxNum = 1;   // increments each time the current container is marked Done
@@ -662,22 +670,7 @@ function renderInner(){
         `<div class="ltap">tap a row to track it for the next hour</div>`;
     }
   }
-  // ---- stow X now -> UPH becomes Y, in 5 UPH steps ----
-  {
-    const J=$("jump"), hrsNow=worked(t)/60;
-    if(!inShift || hrsNow<0.25){
-      J.innerHTML=`<div class="jnote">${!inShift?"shows during your shift":"appears after 15 min of work"}</div>`;
-    } else {
-      const base=Math.floor(all.units/hrsNow);
-      let cells="";
-      for(let i=1;i<=5;i++){
-        const T=base+5*i;
-        const more=Math.max(1, Math.ceil(T*hrsNow - all.units));
-        cells+=`<div class="jc"><div class="ju"><small>+</small>${more}</div><div class="jr">→ <b>${T}</b></div></div>`;
-      }
-      J.innerHTML=`<div class="jhead"><span>stow this many more</span><span>→ your uph</span></div><div class="jrow">${cells}</div>`;
-    }
-  }
+  renderJump();
   renderHour();
 
 
@@ -873,7 +866,7 @@ function clearHoldStart(){
   if(!events.length){ clearBtn.textContent="Nothing to clear"; setTimeout(()=>clearBtn.textContent=clearBase,900); return; }
   clearBtn.textContent="Hold to confirm…";
   clearHoldTimer=setTimeout(()=>{
-    events=[]; boxNum=1; ctype="box"; hourLock=null; setType(ctype); barCache=-1;
+    events=[]; boxNum=1; ctype="box"; hourLock=null; jumpSet=null; setType(ctype); barCache=-1;
     clearBtn.textContent=clearBase;
     $("dlg").close(); render(); queueSave();
     toast("Today cleared", false);
@@ -971,11 +964,56 @@ $("restoreBtn").onclick=()=>{
 function queueSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveShift,300); }
 const HOSTTAG = location.host + location.pathname;   // shows which address this instance is actually saving to
 function saveShift(){
-  const ok=DB.set("stow:"+dayKey, JSON.stringify({events, box:boxNum, ctype, hour:hourLock}));
+  const ok=DB.set("stow:"+dayKey, JSON.stringify({events, box:boxNum, ctype, hour:hourLock, jump:jumpSet}));
   $("status").textContent = ok
-    ? HOSTTAG+" · v30 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+    ? HOSTTAG+" · v31 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
     : HOSTTAG+" · storage full — export your log";
 }
+/* ---------- stow-more strip: a fixed set of 5 goals that fill, vanish when hit, then refresh ---------- */
+function newJumpSet(units, hrs){
+  const base=Math.floor(units/hrs);
+  return {targets:[1,2,3,4,5].map(i=>base+5*i), hit:{}, startHrs:hrs, startUnits:units, round:(jumpSet?jumpSet.round+1:1)};
+}
+function renderJump(){
+  const J=$("jump"); if(!J) return;
+  const t=nowMin(), inShift=t>=mins(S.start)&&t<mins(S.end), hrs=worked(t)/60;
+  if(!inShift || hrs<0.25){
+    J.innerHTML=`<div class="jnote">${!inShift?"shows during your shift":"appears after 15 min of work"}</div>`; return;
+  }
+  const units=counts().units, uph=units/hrs, nowMs=Date.now();
+  if(!jumpSet) { jumpSet=newJumpSet(units,hrs); queueSave(); }
+  // mark newly reached goals
+  let changed=false;
+  jumpSet.targets.forEach(T=>{
+    if(!jumpSet.hit[T] && uph>=T){
+      jumpSet.hit[T]=nowMs; changed=true;
+      if(navigator.vibrate) navigator.vibrate([30,40,30]);
+      toast(`Reached ${T} UPH`, false);
+    }
+  });
+  // all five reached and the last one has finished showing -> fresh set from the new rate
+  const allHit=jumpSet.targets.every(T=>jumpSet.hit[T]);
+  const lastHit=Math.max(0,...Object.values(jumpSet.hit));
+  if(allHit && nowMs-lastHit>1600){ jumpSet=newJumpSet(units,hrs); changed=true; toast("All 5 reached · new set", false); }
+  if(changed) queueSave();
+
+  let cells="";
+  jumpSet.targets.forEach(T=>{
+    const hitAt=jumpSet.hit[T];
+    if(hitAt && nowMs-hitAt>1600) return;                       // already reached: gone
+    const more=Math.max(0, Math.ceil(T*hrs - units));
+    if(hitAt){
+      cells+=`<div class="jc got"><div class="ju">✓</div><div class="jr"><b>${T}</b></div></div>`; return;
+    }
+    // progress = share of the gap (from when this set started) that you've closed
+    const startMore=Math.max(1, T*jumpSet.startHrs - jumpSet.startUnits);
+    const pct=Math.max(0, Math.min(100, Math.round((1 - more/startMore)*100)));
+    cells+=`<div class="jc"><div class="jfill" style="height:${pct}%"></div>
+      <div class="ju"><small>+</small>${more}</div><div class="jr">→ <b>${T}</b></div></div>`;
+  });
+  J.innerHTML=`<div class="jhead"><span>stow this many more → your uph</span><span class="jset">set ${jumpSet.round}</span></div><div class="jrow">${cells}</div>`;
+}
+
 /* ---------- next-hour tracker ---------- */
 function lockHour(T, need, win){
   hourLock={T, need, win, startW:worked(nowMin()), startUnits:counts().units, at:new Date().toISOString()};
@@ -1055,6 +1093,7 @@ function tickClock(){
   }
   lastBlockIdx=idx;
   renderHour();
+  renderJump();
 }
 
 function boot(){
@@ -1065,17 +1104,17 @@ function boot(){
   if(e) try{
     const parsed=JSON.parse(e);
     if(Array.isArray(parsed)){ events=parsed; boxNum=1; ctype="box"; }   // old format, before boxes existed
-    else { events=parsed.events||[]; boxNum=parsed.box||1; ctype=parsed.ctype||"box"; hourLock=parsed.hour||null; hourDoneBuzzed=!!hourLock; }
+    else { events=parsed.events||[]; boxNum=parsed.box||1; ctype=parsed.ctype||"box"; hourLock=parsed.hour||null; hourDoneBuzzed=!!hourLock; jumpSet=parsed.jump||null; }
   }catch(e2){}
   if(S.target < 20) S.target = 120;
   if(!Array.isArray(S.keys) || !S.keys.length) S.keys=[2,4,6,8,10,12,14,16,18,20];
   buildPad();           // migrate old totes-per-quarter setting
   setType(ctype);       // paint the icon/label to match whatever was loaded (or the default)
-  $("status").textContent = HOSTTAG + " · v30 · loaded, no taps yet";
+  $("status").textContent = HOSTTAG + " · v31 · loaded, no taps yet";
   lastQ=quarterAt(nowMin());
   render();
   setInterval(()=>{
-    if(todayKey()!==dayKey){ dayKey=todayKey(); events=[]; boxNum=1; ctype="box"; hourLock=null; setType(ctype); barCache=-1; lastQ=quarterAt(nowMin()); }
+    if(todayKey()!==dayKey){ dayKey=todayKey(); events=[]; boxNum=1; ctype="box"; hourLock=null; jumpSet=null; setType(ctype); barCache=-1; lastQ=quarterAt(nowMin()); }
     render();
   },5000);
   tickClock();
