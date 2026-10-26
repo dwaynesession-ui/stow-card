@@ -405,7 +405,7 @@
       <button id="logBtn">Log</button>
       <button id="settings">Setup</button>
     </div>
-    <div id="status">v35 · offline · stored on this phone only</div>
+    <div id="status">v36 · offline · stored on this phone only</div>
   </div>
 </div>
 
@@ -1007,7 +1007,7 @@ const HOSTTAG = location.host + location.pathname;   // shows which address this
 function saveShift(){
   const ok=DB.set("stow:"+dayKey, JSON.stringify({events, box:boxNum, ctype, hour:hourLock, jump:jumpSet}));
   $("status").textContent = ok
-    ? "v35 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+    ? "v36 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
     : HOSTTAG+" · storage full — export your log";
 }
 /* ---------- stow-more strip: a fixed set of 5 goals that fill, vanish when hit, then refresh ---------- */
@@ -1076,6 +1076,11 @@ function renderJump(){
   }
   const units=counts().units, uph=units/hrs, nowMs=Date.now();
   if(!jumpSet) { jumpSet=newJumpSet(units,hrs); queueSave(); }
+  // after an undo or a removed entry the rate can drop below where this set started: rebuild it from the real rate
+  if(uph < jumpSet.targets[0]-5){ const r=jumpSet.round; jumpSet=newJumpSet(units,hrs); jumpSet.round=r; queueSave(); }
+  // and un-reach any goal the rate has fallen back under because entries were taken away
+  Object.keys(jumpSet.hit).forEach(T=>{ if(uph<Number(T) && units<(jumpSet.lastUnits||0)) delete jumpSet.hit[T]; });
+  jumpSet.lastUnits=units;
   // mark newly reached goals
   let changed=false;
   jumpSet.targets.forEach(T=>{
@@ -1206,7 +1211,7 @@ function boot(){
   buildPad();           // migrate old totes-per-quarter setting
   try{ showReach(localStorage.getItem("stow-reach-tab")==="1"); }catch(e){}
   setType(ctype);       // paint the icon/label to match whatever was loaded (or the default)
-  $("status").textContent = "v35 · ready";
+  $("status").textContent = "v36 · ready";
   lastQ=quarterAt(nowMin());
   render();
   setInterval(()=>{
