@@ -105,6 +105,33 @@
   .ladder .lrow.hit .lbar i{background:var(--ahead);opacity:1}
   .ladder .lblk{text-transform:none;letter-spacing:.04em;color:var(--ink)}
   .ladder .lblk b{font-family:var(--fd);font-size:13px}
+  .ladder .lrow{cursor:pointer}
+  .ladder .lrow.locked{outline:3px solid var(--ink);outline-offset:-3px}
+  .ladder .ltap{padding:5px 10px;font-family:var(--fm);font-size:9px;letter-spacing:.08em;color:var(--slate);text-align:center;border-top:1px solid var(--rule)}
+  .hour{margin-top:8px;border:2px solid var(--ink);background:var(--paper-3);box-shadow:4px 4px 0 var(--ink)}
+  .hour .htop{display:flex;justify-content:space-between;align-items:baseline;padding:7px 10px 3px}
+  .hour .hgoal{font-family:var(--fd);font-weight:700;font-size:18px}
+  .hour .hclock{font-family:var(--fm);font-weight:600;font-size:18px;font-variant-numeric:tabular-nums}
+  .hour .hstat{padding:2px 10px 4px;font-family:var(--fd);font-weight:700;font-size:26px;line-height:1.1}
+  .hour.up .hstat{color:var(--ahead)} .hour.down .hstat{color:var(--signal)}
+  .hour .hsub{padding:0 10px 7px;font-family:var(--fm);font-size:10px;letter-spacing:.04em;color:var(--slate);line-height:1.5}
+  .hour .hsub b{color:var(--ink);font-family:var(--fd);font-size:13px}
+  .hour .hbar{position:relative;height:10px;background:var(--paper-2);border-top:1px solid var(--rule)}
+  .hour .hbar i{position:absolute;left:0;top:0;bottom:0;background:var(--ink)}
+  .hour.up .hbar i{background:var(--ahead)} .hour.down .hbar i{background:var(--signal)}
+  .hour .hbar em{position:absolute;top:-3px;bottom:-3px;width:3px;background:var(--hivis);outline:1px solid var(--ink)}
+  .hour .hx{float:right;margin:6px 10px 0 0;height:26px;padding:0 9px;font-family:var(--fm);font-size:9px;letter-spacing:.1em;text-transform:uppercase;border-width:1.5px}
+  .jump{margin-top:8px;border:1.5px solid var(--ink);background:var(--paper)}
+  .jump .jhead{padding:6px 10px 5px;border-bottom:1px solid var(--rule);font-family:var(--fm);font-size:9px;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--slate);display:flex;justify-content:space-between}
+  .jump .jrow{display:grid;grid-template-columns:repeat(5,1fr)}
+  .jump .jc{text-align:center;padding:6px 2px 7px;border-right:1px solid var(--rule)}
+  .jump .jc:last-child{border-right:0}
+  .jump .ju{font-family:var(--fd);font-weight:700;font-size:22px;line-height:1;font-variant-numeric:tabular-nums}
+  .jump .ju small{font-size:13px;color:var(--slate)}
+  .jump .jr{font-family:var(--fm);font-size:11px;margin-top:4px;color:var(--slate)}
+  .jump .jr b{color:var(--ink);font-family:var(--fd);font-size:15px}
+  .jump .jnote{padding:6px 10px;font-family:var(--fm);font-size:10px;color:var(--slate);text-align:center}
   .ladder .lnote{padding:6px 10px;font-family:var(--fm);font-size:10px;color:var(--slate);text-align:center}
   .bclock{display:flex;align-items:baseline;justify-content:center;gap:10px;margin-top:8px}
   .bclock .bcl{font-family:var(--fm);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--slate)}
@@ -272,7 +299,9 @@
     </div>
     <div class="bclock" id="bclock"><span class="bcl">this 15</span><span id="bcTime">--:--</span><span class="bcl" id="bcSub">left</span></div>
     <div id="block">—</div>
+    <div class="hour" id="hour" hidden></div>
     <div class="ladder" id="ladder"></div>
+    <div class="jump" id="jump"></div>
   </div>
 
   <div class="pad" id="pad"></div>
@@ -329,7 +358,7 @@
       <button id="logBtn">Log</button>
       <button id="settings">Setup</button>
     </div>
-    <div id="status">v28 · offline · stored on this phone only</div>
+    <div id="status">v30 · offline · stored on this phone only</div>
   </div>
 </div>
 
@@ -394,6 +423,8 @@ const DB = {
 const S = { start:"07:00", end:"17:30", lunchA:"11:30", lunchB:"12:00", target:120,
             keys:[2,4,6,8,10,12,14,16,18,20] };
 let lastUnits = null;
+let hourLock = null;   // {T, need, win, startW, startUnits, at} — a chosen next-hour goal
+let hourDoneBuzzed = false;
 let boxNum = 1;   // increments each time the current container is marked Done
 let ctype = "box", lastCtype = null;   // "box" or "tote" — tags each unit event for later breakdown
 let events = [], history = [], dayKey = "", saveTimer = null, lastQ = null, wakeSentinel = null, toastTimer = null;
@@ -620,16 +651,34 @@ function renderInner(){
         const done=bUnits>=per15;
         const onPace=bUnits>=per15*(inBlock/15);           // where you should be this far into the block
         const pct=Math.min(100, Math.round(bUnits/per15*100));
-        rows+=`<div class="lrow${done?" hit":onPace?" pace":""}">
+        rows+=`<div class="lrow${done?" hit":onPace?" pace":""}${hourLock&&hourLock.T===T?" locked":""}" data-t="${T}" data-need="${need}" data-win="${win}">
           <div class="lrate">${T}<small> UPH</small></div>
           <div class="lhr">${need} in ${Math.round(win)}m</div>
           <div class="lq">${bUnits}<small>/${per15}</small></div>
           <div class="lbar"><i style="width:${pct}%"></i></div></div>`;
       }
       L.innerHTML=`<div class="lhead"><span>now ${base} uph</span>`+
-        `<span class="lblk">this 15: <b>${bUnits}</b> in ${Math.floor(inBlock)}m · <b>${bUnits?blockUph:0}</b> uph pace</span></div>`+rows;
+        `<span class="lblk">this 15: <b>${bUnits}</b> in ${Math.floor(inBlock)}m · <b>${bUnits?blockUph:0}</b> uph pace</span></div>`+rows+
+        `<div class="ltap">tap a row to track it for the next hour</div>`;
     }
   }
+  // ---- stow X now -> UPH becomes Y, in 5 UPH steps ----
+  {
+    const J=$("jump"), hrsNow=worked(t)/60;
+    if(!inShift || hrsNow<0.25){
+      J.innerHTML=`<div class="jnote">${!inShift?"shows during your shift":"appears after 15 min of work"}</div>`;
+    } else {
+      const base=Math.floor(all.units/hrsNow);
+      let cells="";
+      for(let i=1;i<=5;i++){
+        const T=base+5*i;
+        const more=Math.max(1, Math.ceil(T*hrsNow - all.units));
+        cells+=`<div class="jc"><div class="ju"><small>+</small>${more}</div><div class="jr">→ <b>${T}</b></div></div>`;
+      }
+      J.innerHTML=`<div class="jhead"><span>stow this many more</span><span>→ your uph</span></div><div class="jrow">${cells}</div>`;
+    }
+  }
+  renderHour();
 
 
 
@@ -824,7 +873,7 @@ function clearHoldStart(){
   if(!events.length){ clearBtn.textContent="Nothing to clear"; setTimeout(()=>clearBtn.textContent=clearBase,900); return; }
   clearBtn.textContent="Hold to confirm…";
   clearHoldTimer=setTimeout(()=>{
-    events=[]; boxNum=1; ctype="box"; setType(ctype); barCache=-1;
+    events=[]; boxNum=1; ctype="box"; hourLock=null; setType(ctype); barCache=-1;
     clearBtn.textContent=clearBase;
     $("dlg").close(); render(); queueSave();
     toast("Today cleared", false);
@@ -922,11 +971,68 @@ $("restoreBtn").onclick=()=>{
 function queueSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveShift,300); }
 const HOSTTAG = location.host + location.pathname;   // shows which address this instance is actually saving to
 function saveShift(){
-  const ok=DB.set("stow:"+dayKey, JSON.stringify({events, box:boxNum, ctype}));
+  const ok=DB.set("stow:"+dayKey, JSON.stringify({events, box:boxNum, ctype, hour:hourLock}));
   $("status").textContent = ok
-    ? HOSTTAG+" · v28 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+    ? HOSTTAG+" · v30 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
     : HOSTTAG+" · storage full — export your log";
 }
+/* ---------- next-hour tracker ---------- */
+function lockHour(T, need, win){
+  hourLock={T, need, win, startW:worked(nowMin()), startUnits:counts().units, at:new Date().toISOString()};
+  hourDoneBuzzed=false;
+  if(navigator.vibrate) navigator.vibrate(30);
+  toast(`Tracking ${T} UPH · ${need} units in ${Math.round(win)}m`, false);
+  queueSave(); render();
+}
+function clearHour(){ hourLock=null; queueSave(); render(); }
+function renderHour(){
+  const H=$("hour"); if(!H) return;
+  if(!hourLock){ H.hidden=true; return; }
+  H.hidden=false;
+  const t=nowMin(), onLunch=t>=mins(S.lunchA)&&t<mins(S.lunchB);
+  const {T,need,win,startW,startUnits}=hourLock;
+  const el=Math.max(0, Math.min(win, worked(t)-startW));          // worked minutes since lock (lunch frozen)
+  const left=Math.max(0, win-el);
+  const done=Math.max(0, counts().units-startUnits);
+  const expected=need*(el/win);
+  const diff=Math.round(done-expected);
+  const secs=Math.round(left*60);
+  const clock=String(Math.floor(secs/60)).padStart(2,"0")+":"+String(secs%60).padStart(2,"0");
+  const pct=Math.min(100, need? done/need*100 : 100);
+  const mark=Math.min(100, el/win*100);
+  let cls, stat, sub;
+  if(left<=0){
+    const hit=done>=need;
+    cls=hit?"up":"down";
+    stat=hit?`HIT ${T} UPH ✓`:`MISSED BY ${need-done}`;
+    sub=`Stowed <b>${done}</b> of <b>${need}</b> this hour. Tap a row to start a new hour.`;
+    if(!hourDoneBuzzed){ hourDoneBuzzed=true; if(navigator.vibrate) navigator.vibrate(hit?[60,60,60,60,200]:[300]); }
+  } else if(done>=need){
+    cls="up"; stat=`DONE · ${done}/${need}`; sub=`Goal reached with ${clock} to spare. Anything extra pushes you past ${T}.`;
+  } else {
+    const restPer15 = left>=1 ? Math.ceil((need-done)/(left/15)) : need-done;
+    const proj = el>=3 ? Math.round(done/el*win) : null;            // where you finish the hour at your pace so far
+    const projUph = proj!==null ? Math.round((startUnits+proj)/((startW+win)/60)) : null;
+    cls = diff>=0 ? "up" : "down";
+    stat = diff>=0 ? `ON PACE +${diff}` : `BEHIND ${-diff}`;
+    sub = `<b>${done}</b> of <b>${need}</b> · need <b>${restPer15}</b>/15 for the rest`+
+          (projUph!==null ? `<br>At this pace you finish the hour at <b>${projUph}</b> UPH (${proj>=need?"makes it":"short by "+(need-proj)})` : `<br>Projection appears after 3 minutes`);
+  }
+  if(onLunch && left>0) sub+=`<br>Paused for lunch`;
+  H.className="hour "+cls;
+  H.innerHTML=`<button class="hx" id="hourX">Stop</button>
+    <div class="htop"><span class="hgoal">GOAL ${T} UPH</span><span class="hclock">${clock}</span></div>
+    <div class="hstat">${stat}</div>
+    <div class="hsub">${sub}</div>
+    <div class="hbar"><i style="width:${pct}%"></i><em style="left:calc(${mark}% - 1px)"></em></div>`;
+  $("hourX").onclick=clearHour;
+}
+document.addEventListener("click", e=>{
+  const row=e.target.closest && e.target.closest("#ladder .lrow");
+  if(!row) return;
+  lockHour(Number(row.dataset.t), Number(row.dataset.need), Number(row.dataset.win));
+});
+
 /* ---------- 15-minute countdown, ticks every second ---------- */
 let lastBlockIdx=null;
 function tickClock(){
@@ -948,6 +1054,7 @@ function tickClock(){
     render();                         // roll the block bar and ladder over immediately
   }
   lastBlockIdx=idx;
+  renderHour();
 }
 
 function boot(){
@@ -958,17 +1065,17 @@ function boot(){
   if(e) try{
     const parsed=JSON.parse(e);
     if(Array.isArray(parsed)){ events=parsed; boxNum=1; ctype="box"; }   // old format, before boxes existed
-    else { events=parsed.events||[]; boxNum=parsed.box||1; ctype=parsed.ctype||"box"; }
+    else { events=parsed.events||[]; boxNum=parsed.box||1; ctype=parsed.ctype||"box"; hourLock=parsed.hour||null; hourDoneBuzzed=!!hourLock; }
   }catch(e2){}
   if(S.target < 20) S.target = 120;
   if(!Array.isArray(S.keys) || !S.keys.length) S.keys=[2,4,6,8,10,12,14,16,18,20];
   buildPad();           // migrate old totes-per-quarter setting
   setType(ctype);       // paint the icon/label to match whatever was loaded (or the default)
-  $("status").textContent = HOSTTAG + " · v28 · loaded, no taps yet";
+  $("status").textContent = HOSTTAG + " · v30 · loaded, no taps yet";
   lastQ=quarterAt(nowMin());
   render();
   setInterval(()=>{
-    if(todayKey()!==dayKey){ dayKey=todayKey(); events=[]; boxNum=1; ctype="box"; setType(ctype); barCache=-1; lastQ=quarterAt(nowMin()); }
+    if(todayKey()!==dayKey){ dayKey=todayKey(); events=[]; boxNum=1; ctype="box"; hourLock=null; setType(ctype); barCache=-1; lastQ=quarterAt(nowMin()); }
     render();
   },5000);
   tickClock();
