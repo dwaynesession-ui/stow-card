@@ -278,6 +278,12 @@
   .hrowitem{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;padding:7px 2px;border-bottom:1px solid var(--rule);
     font-family:var(--fm);font-size:11px;align-items:baseline}
   .hrowitem b{font-family:var(--fd);font-size:16px;font-weight:700}
+  #viewReach{display:none;padding:10px 16px 0}
+  .card.reachmode > *:not(header):not(#viewReach):not(.sheet):not(#banner){display:none!important}
+  .card.reachmode #viewReach{display:block}
+  .card.reachmode .sheet > .qtable,.card.reachmode .sheet > .rates{display:none}
+  #reachBtn.on{background:var(--hivis)}
+  .tools button{padding:0;font-size:9px;letter-spacing:.08em}
 </style>
 </head>
 <body>
@@ -327,18 +333,6 @@
     <div class="hour" id="hour" hidden></div>
     <div class="ladder" id="ladder"></div>
     <div class="jump" id="jump"></div>
-    <div class="reach" id="reach">
-      <div class="rhead">
-        <span class="rlbl">reach</span>
-        <button id="rMinus" aria-label="lower target">−5</button>
-        <input id="rGoal" type="number" inputmode="numeric" min="10" max="400" aria-label="target UPH">
-        <span class="rlbl">uph</span>
-        <button id="rPlus" aria-label="raise target">+5</button>
-        <span class="rnow" id="rNowTxt"></span>
-      </div>
-      <div class="rrows" id="rRows"></div>
-      <div class="rnote" id="rNote"></div>
-    </div>
   </div>
 
   <div class="pad" id="pad"></div>
@@ -382,6 +376,21 @@
     <button id="snag"><span class="cnt" id="cSnag">0</span><span class="sub">snag</span></button>
   </div>
 
+  <div id="viewReach">
+    <div class="reach" id="reach">
+      <div class="rhead">
+        <span class="rlbl">reach</span>
+        <button id="rMinus" aria-label="lower target">−5</button>
+        <input id="rGoal" type="number" inputmode="numeric" min="10" max="400" aria-label="target UPH">
+        <span class="rlbl">uph</span>
+        <button id="rPlus" aria-label="raise target">+5</button>
+        <span class="rnow" id="rNowTxt"></span>
+      </div>
+      <div class="rrows" id="rRows"></div>
+      <div class="rnote" id="rNote"></div>
+    </div>
+  </div>
+
   <div class="sheet">
     <div class="qtable" id="qtable"></div>
     <div class="rates">
@@ -392,10 +401,11 @@
     <div class="tools">
       <button id="undo" disabled>Undo</button>
       <button id="wake">Screen</button>
+      <button id="reachBtn">Reach</button>
       <button id="logBtn">Log</button>
       <button id="settings">Setup</button>
     </div>
-    <div id="status">v34 · offline · stored on this phone only</div>
+    <div id="status">v35 · offline · stored on this phone only</div>
   </div>
 </div>
 
@@ -997,7 +1007,7 @@ const HOSTTAG = location.host + location.pathname;   // shows which address this
 function saveShift(){
   const ok=DB.set("stow:"+dayKey, JSON.stringify({events, box:boxNum, ctype, hour:hourLock, jump:jumpSet}));
   $("status").textContent = ok
-    ? "v34 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+    ? "v35 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
     : HOSTTAG+" · storage full — export your log";
 }
 /* ---------- stow-more strip: a fixed set of 5 goals that fill, vanish when hit, then refresh ---------- */
@@ -1039,6 +1049,14 @@ function renderReach(){
   rows.innerHTML=html;
   note.innerHTML=`Any one row gets you to <b>${G}</b>. Green = about a normal box. Assumes a typical box of ~${Math.round(u)} units${bs.n>=3?" (from your boxes)":" until you've tapped Done on 3"}.`;
 }
+function showReach(on){
+  document.querySelector(".card").classList.toggle("reachmode", on);
+  $("reachBtn").classList.toggle("on", on);
+  $("reachBtn").textContent = on ? "Back" : "Reach";
+  try{ localStorage.setItem("stow-reach-tab", on?"1":""); }catch(e){}
+  window.scrollTo(0,0); if(on) renderReach();
+}
+document.addEventListener("click", e=>{ if(e.target.closest && e.target.closest("#reachBtn")) showReach(!document.querySelector(".card").classList.contains("reachmode")); });
 function setReach(v){
   S.reach=Math.max(10, Math.min(400, Math.round(v)||S.reach));
   DB.set("stow-settings", JSON.stringify(S)); renderReach();
@@ -1186,8 +1204,9 @@ function boot(){
   if(S.target < 20) S.target = 120;
   if(!Array.isArray(S.keys) || !S.keys.length) S.keys=[2,4,6,8,10,12,14,16,18,20];
   buildPad();           // migrate old totes-per-quarter setting
+  try{ showReach(localStorage.getItem("stow-reach-tab")==="1"); }catch(e){}
   setType(ctype);       // paint the icon/label to match whatever was loaded (or the default)
-  $("status").textContent = "v34 · ready";
+  $("status").textContent = "v35 · ready";
   lastQ=quarterAt(nowMin());
   render();
   setInterval(()=>{
