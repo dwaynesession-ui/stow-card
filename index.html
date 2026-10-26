@@ -138,6 +138,24 @@
   .jump .ju small{font-size:13px;color:var(--slate)}
   .jump .jr{font-family:var(--fm);font-size:11px;margin-top:4px;color:var(--slate)}
   .jump .jr b{color:var(--ink);font-family:var(--fd);font-size:15px}
+  .reach{margin-top:8px;border:1.5px solid var(--ink);background:var(--paper)}
+  .reach .rhead{display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--rule);background:var(--paper-3)}
+  .reach .rlbl{font-family:var(--fm);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--slate)}
+  .reach .rhead button{height:32px;min-width:40px;font-family:var(--fd);font-weight:700;font-size:15px;border-width:1.5px;padding:0 6px}
+  .reach .rhead button:active{background:var(--hivis)}
+  #rGoal{width:64px;height:32px;padding:2px 6px;text-align:center;font-family:var(--fd);font-weight:700;font-size:20px}
+  .reach .rnow{margin-left:auto;font-family:var(--fm);font-size:10px;color:var(--slate);text-align:right}
+  .reach .rrow{display:grid;grid-template-columns:1.2fr 1fr .9fr;align-items:baseline;padding:5px 10px;border-bottom:1px solid var(--rule);font-variant-numeric:tabular-nums}
+  .reach .rrow:last-child{border-bottom:0}
+  .reach .rk{font-family:var(--fm);font-size:11px;color:var(--slate)}
+  .reach .rk b{font-family:var(--fd);font-size:16px;color:var(--ink)}
+  .reach .rn{font-family:var(--fd);font-weight:700;font-size:22px;text-align:center}
+  .reach .rn small{font-family:var(--fm);font-size:9px;font-weight:400;color:var(--slate)}
+  .reach .rt{font-family:var(--fm);font-size:11px;color:var(--slate);text-align:right}
+  .reach .rrow.easy .rn{color:var(--ahead)}
+  .reach .rrow.far{opacity:.45}
+  .reach .rnote{padding:6px 10px;font-family:var(--fm);font-size:10px;color:var(--slate);line-height:1.45;border-top:1px solid var(--rule)}
+  .reach .rnote:empty{display:none}
   .jump .jnote{padding:6px 10px;font-family:var(--fm);font-size:10px;color:var(--slate);text-align:center}
   .ladder .lnote{padding:6px 10px;font-family:var(--fm);font-size:10px;color:var(--slate);text-align:center}
   .bclock{display:flex;align-items:baseline;justify-content:center;gap:10px;margin-top:8px}
@@ -309,6 +327,18 @@
     <div class="hour" id="hour" hidden></div>
     <div class="ladder" id="ladder"></div>
     <div class="jump" id="jump"></div>
+    <div class="reach" id="reach">
+      <div class="rhead">
+        <span class="rlbl">reach</span>
+        <button id="rMinus" aria-label="lower target">−5</button>
+        <input id="rGoal" type="number" inputmode="numeric" min="10" max="400" aria-label="target UPH">
+        <span class="rlbl">uph</span>
+        <button id="rPlus" aria-label="raise target">+5</button>
+        <span class="rnow" id="rNowTxt"></span>
+      </div>
+      <div class="rrows" id="rRows"></div>
+      <div class="rnote" id="rNote"></div>
+    </div>
   </div>
 
   <div class="pad" id="pad"></div>
@@ -365,7 +395,7 @@
       <button id="logBtn">Log</button>
       <button id="settings">Setup</button>
     </div>
-    <div id="status">v31 · offline · stored on this phone only</div>
+    <div id="status">v34 · offline · stored on this phone only</div>
   </div>
 </div>
 
@@ -671,6 +701,7 @@ function renderInner(){
     }
   }
   renderJump();
+  renderReach();
   renderHour();
 
 
@@ -966,7 +997,7 @@ const HOSTTAG = location.host + location.pathname;   // shows which address this
 function saveShift(){
   const ok=DB.set("stow:"+dayKey, JSON.stringify({events, box:boxNum, ctype, hour:hourLock, jump:jumpSet}));
   $("status").textContent = ok
-    ? HOSTTAG+" · v31 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+    ? "v34 · saved · "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
     : HOSTTAG+" · storage full — export your log";
 }
 /* ---------- stow-more strip: a fixed set of 5 goals that fill, vanish when hit, then refresh ---------- */
@@ -974,6 +1005,51 @@ function newJumpSet(units, hrs){
   const base=Math.floor(units/hrs);
   return {targets:[1,2,3,4,5].map(i=>base+5*i), hit:{}, startHrs:hrs, startUnits:units, round:(jumpSet?jumpSet.round+1:1)};
 }
+/* ---------- reach a target rate with 1-5 boxes ----------
+   Each box costs fixed time (walk, open, find bin space) plus about 12 s per unit.
+   The fixed part is backed out of your own pace: at R UPH with typical boxes of u units,
+   one box takes 60u/R minutes. For k boxes of N units each to bring the shift rate to G:
+     (units + kN) / (hours + k(a + bN)/60) >= G
+     =>  N >= (G*hours - units + G*k*a/60) / (k * (1 - G*b/60))                                  */
+const BOX_PER_UNIT_MIN = 0.2;
+function renderReach(){
+  const rows=$("rRows"), note=$("rNote"); if(!rows) return;
+  const t=nowMin(), inShift=t>=mins(S.start)&&t<mins(S.end), hrs=worked(t)/60;
+  const units=counts().units, R=hrs>0.05 ? units/hrs : 0;
+  if(!S.reach || S.reach<10) S.reach = Math.max(20, Math.ceil((R+10)/5)*5);
+  if(document.activeElement!==$("rGoal")) $("rGoal").value=S.reach;
+  if(!inShift || hrs<0.25 || units<=0){
+    $("rNowTxt").textContent=""; rows.innerHTML=""; note.textContent=!inShift?"Shows during your shift.":"Appears after 15 minutes of work."; return;
+  }
+  const G=S.reach;
+  $("rNowTxt").innerHTML=`now <b>${Math.round(R)}</b>`;
+  if(R>=G){ rows.innerHTML=""; note.innerHTML=`You're already at ${Math.round(R)} UPH. Raise the target with +5.`; return; }
+  const bs=boxStats(), u = bs.n>=3 ? Math.max(4, bs.avg) : 15, b=BOX_PER_UNIT_MIN;
+  const a=Math.max(1, 60*u/Math.max(15,R) - b*u);
+  const k1=1-G*b/60;
+  if(k1<=0.05){ rows.innerHTML=""; note.textContent=`${G} UPH is beyond what boxes alone can reach. Try a lower target.`; return; }
+  let html="";
+  for(let k=1;k<=5;k++){
+    const N=Math.max(1, Math.ceil((G*hrs - units + G*k*a/60)/(k*k1)));
+    const mins=Math.round(k*(a+b*N));
+    const cls = N<=u*1.2 ? "easy" : N>150 ? "far" : "";
+    html+=`<div class="rrow ${cls}"><div class="rk"><b>${k}</b> ${k===1?"box":"boxes"} of</div>
+      <div class="rn">${N}<small>${k>1?" each":""}</small></div><div class="rt">~${mins} min</div></div>`;
+  }
+  rows.innerHTML=html;
+  note.innerHTML=`Any one row gets you to <b>${G}</b>. Green = about a normal box. Assumes a typical box of ~${Math.round(u)} units${bs.n>=3?" (from your boxes)":" until you've tapped Done on 3"}.`;
+}
+function setReach(v){
+  S.reach=Math.max(10, Math.min(400, Math.round(v)||S.reach));
+  DB.set("stow-settings", JSON.stringify(S)); renderReach();
+}
+document.addEventListener("click", e=>{
+  if(!e.target.closest) return;
+  if(e.target.closest("#rMinus")) setReach((S.reach||0)-5);
+  if(e.target.closest("#rPlus"))  setReach((S.reach||0)+5);
+});
+document.addEventListener("change", e=>{ if(e.target.id==="rGoal") setReach(Number(e.target.value)); });
+
 function renderJump(){
   const J=$("jump"); if(!J) return;
   const t=nowMin(), inShift=t>=mins(S.start)&&t<mins(S.end), hrs=worked(t)/60;
@@ -1094,6 +1170,7 @@ function tickClock(){
   lastBlockIdx=idx;
   renderHour();
   renderJump();
+  renderReach();
 }
 
 function boot(){
@@ -1110,7 +1187,7 @@ function boot(){
   if(!Array.isArray(S.keys) || !S.keys.length) S.keys=[2,4,6,8,10,12,14,16,18,20];
   buildPad();           // migrate old totes-per-quarter setting
   setType(ctype);       // paint the icon/label to match whatever was loaded (or the default)
-  $("status").textContent = HOSTTAG + " · v31 · loaded, no taps yet";
+  $("status").textContent = "v34 · ready";
   lastQ=quarterAt(nowMin());
   render();
   setInterval(()=>{
